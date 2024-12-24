@@ -3,12 +3,16 @@ module Main where
 import Prelude as P
 import Control.Lens as C
 import Graphics.Image as I
+import Data.Maybe (fromJust, fromMaybe)
+import Data.List (elemIndex, findIndex)
 
 newtype Tile = Tile {_image :: Image RPU RGB Double}
     deriving Eq
 type Constraint a = (Int, Int) -> (a -> a -> Bool) -- takes two indexes and compares the tiles on their indexes if allowed
 
 type Grid a = [[a]]  -- rows and cols (x,y)
+(!!!) :: Grid a -> (Int, Int) -> a
+g !!! l = g !! fst l !! snd l 
 
 type Domain a = [a] -- list of tiles that are possibilities
 
@@ -38,6 +42,7 @@ main = do
     let res = wfc grd cst
     let wfcres = combineTiles $ toTiles res
     print $ length <$> concat res
+    print $ minDex res
     write ("res",  wfcres)
 
 toTiles :: Grid (Domain Tile) -> [Tile]
@@ -65,5 +70,13 @@ cst = []
 grd :: Grid (Domain Tile)
 grd = replicate 3 (replicate 3 tilelist) -- domains start all possibilities
 
+minDex :: Grid (Domain Tile) -> (Int, Int) -- (row,col)
+minDex g = (ai `div` f, ai `mod` f) 
+    where ai = fromMaybe (-1) (findIndex (\l -> length l == minlen) cg)
+          minlen = P.minimum (length <$> cg)
+          cg = concat g
+          f = (length . head) g
+
+
 wfc :: Grid (Domain Tile) -> [Constraint Tile] -> Grid (Domain Tile)
-wfc inp cs = over (element 1 . element 1) ((:[]) . head) inp
+wfc inp cs = over (element 2 . element 1) ((:[]) . head) inp
