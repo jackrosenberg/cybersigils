@@ -8,14 +8,11 @@ newtype Tile = Tile {_image :: Image RPU RGB Double}
     deriving Eq
 type Constraint a = (Int, Int) -> (a -> a -> Bool) -- takes two indexes and compares the tiles on their indexes if allowed
 
-newtype Grid a = Grid { _grid :: [[Domain a]] } -- rows and cols (x,y)
+type Grid a = [[a]]  -- rows and cols (x,y)
 
-newtype Domain a = Domain {_list :: [a]} -- list of tiles that are possibilities
-    deriving Foldable
+type Domain a = [a] -- list of tiles that are possibilities
 
-$(makeLenses ''Domain) -- allows setting and getting of the list in Domain
 $(makeLenses ''Tile)
-$(makeLenses ''Grid)
 
 tileGen :: Int -> ((Int, Int) -> Pixel RGB Double) -> Tile 
 tileGen sz = Tile . makeImageR RPU (sz, sz) 
@@ -38,11 +35,12 @@ tilelist = [horizTile ,vertTile, crossTile]
 
 main :: IO ()
 main = do 
-    let wfcres = combineTiles $ toTiles (wfc grd cst )
+    let wfcres = combineTiles $ toTiles (wfc grd cst)
+    print $ length <$> (wfc grd cst)
     write ("res",  wfcres)
 
-toTiles :: Grid Tile -> [Tile]
-toTiles g = (\dt -> avgImg (view image <$> (dt^.list))) <$> concat (g^.grid)
+toTiles :: Grid (Domain Tile) -> [Tile]
+toTiles g = (\dt -> avgImg (view image <$> dt)) <$> concat g
 
 avgImg :: [Image RPU RGB Double] -> Tile
 avgImg [] = error "dumfuk"
@@ -63,8 +61,8 @@ combineTiles tl = add tl canvas 0
 
 cst :: [Constraint Tile]
 cst = []
-grd :: Grid Tile
-grd = Grid { _grid = replicate 3 (replicate 3 Domain { _list = tilelist}) } -- domains start all possibilities
+grd :: Grid (Domain Tile)
+grd = replicate 3 (replicate 3 tilelist) -- domains start all possibilities
 
-wfc :: Grid Tile -> [Constraint Tile] -> Grid Tile
-wfc inp cs = over mapped (const crossTile) inp 
+wfc :: Grid (Domain Tile) -> [Constraint Tile] -> Grid (Domain Tile)
+wfc inp cs = inp 
