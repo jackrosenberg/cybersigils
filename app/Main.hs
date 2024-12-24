@@ -79,4 +79,8 @@ minDex g = (ai `div` f, ai `mod` f)
 
 
 wfc :: Grid (Domain Tile) -> [Constraint Tile] -> Grid (Domain Tile)
-wfc inp cs = over (element 2 . element 1) ((:[]) . head) inp
+wfc inp cs = over (element r . element c) ((:[]) . head) inp
+    where (r,c) = minDex inp
+
+step :: Grid (Domain Tile) -> [Constraint Tile] -> (Int, Int) -> Grid (Domain Tile)
+step inp cs (r,c) =  over (element r . element c) ((:[]) . head) inp
