@@ -35,8 +35,9 @@ tilelist = [horizTile ,vertTile, crossTile]
 
 main :: IO ()
 main = do 
-    let wfcres = combineTiles $ toTiles (wfc grd cst)
-    print $ length <$> (wfc grd cst)
+    let res = wfc grd cst
+    let wfcres = combineTiles $ toTiles res
+    print $ length <$> concat res
     write ("res",  wfcres)
 
 toTiles :: Grid (Domain Tile) -> [Tile]
@@ -65,4 +66,4 @@ grd :: Grid (Domain Tile)
 grd = replicate 3 (replicate 3 tilelist) -- domains start all possibilities
 
 wfc :: Grid (Domain Tile) -> [Constraint Tile] -> Grid (Domain Tile)
-wfc inp cs = inp 
+wfc inp cs = over (element 1 . element 1) ((:[]) . head) inp
