@@ -1,15 +1,15 @@
-{-# LANGUAGE TemplateHaskell, DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
+{-# LANGUAGE TemplateHaskell, DeriveTraversable #-}
 module Main where
 import Prelude as P
 import Control.Lens as C
 import Graphics.Image as I
-import Data.Maybe (fromJust, fromMaybe)
-import Data.List (elemIndex, findIndex)
+import Data.Maybe (fromMaybe)
+import Data.List (findIndex)
 
 newtype Tile = Tile {_image :: Image RPU RGB Double}
     deriving Eq
-type Constraint a = (Int, Int) -> (a -> a -> Bool) -- takes two indexes and compares the tiles on their indexes if allowed
-
+type Constraint a = (Int, Int) -> (Int, Int) -> Tile -> Tile -> Bool -- takes two indexes and gives func to compare
+ -- takes two indexes and gives func to compare
 type Grid a = [[a]]  -- rows and cols (x,y)
 (!!!) :: Grid a -> (Int, Int) -> a
 g !!! l = g !! fst l !! snd l 
@@ -66,7 +66,12 @@ combineTiles tl = add tl canvas 0
 
 
 cst :: [Constraint Tile]
-cst = []
+cst = [c12]
+
+c12 :: (Int, Int) -> (Int, Int) -> Tile -> Tile -> Bool -- takes two indexes and gives func to compare
+c12 (0,0) (0,1) = (==)
+c12 _ _ = const $ const False
+
 grd :: Grid (Domain Tile)
 grd = replicate 3 (replicate 3 tilelist) -- domains start all possibilities
 
@@ -77,10 +82,31 @@ minDex g = (ai `div` f, ai `mod` f)
           cg = concat g
           f = (length . head) g
 
+pop :: Domain Tile -> Domain Tile -- make random
+pop = (:[]) . last
+
 
 wfc :: Grid (Domain Tile) -> [Constraint Tile] -> Grid (Domain Tile)
-wfc inp cs = over (element r . element c) ((:[]) . head) inp
+wfc inp cs = collapse (over (element r . element c) pop inp) cs [(r,c)]
     where (r,c) = minDex inp
 
-step :: Grid (Domain Tile) -> [Constraint Tile] -> (Int, Int) -> Grid (Domain Tile)
-step inp cs (r,c) =  over (element r . element c) ((:[]) . head) inp
+collapse :: Grid (Domain Tile) -> [Constraint Tile] -> [(Int, Int)] -> Grid (Domain Tile)
+collapse inp _ [] = inp
+collapse inp cs (og@(r,c):q) = over (element tr . element tc) prune inp -- replace with list of succs
+    where hb = head cs
+          tar@(tr, tc) = (r, c+1)
+          prune :: Domain Tile -> Domain Tile -- remove all values in target that violate constraint forall values of neighbor
+          prune [] = []
+          prune (d:ds) = if all (hb og tar d) (inp !!! og) then prune ds else d : prune ds
+
+
+
+
+
+
+
+
+
+
+
+
