@@ -5,6 +5,8 @@ import Control.Lens as C
 import Graphics.Image as I
 import Data.Maybe (fromMaybe)
 import Data.List (findIndex)
+import Debug.Trace (trace)
+import Control.Monad (liftM2)
 
 newtype Tile = Tile {_image :: Image RPU RGB Double}
     deriving Eq
@@ -49,7 +51,7 @@ toTiles :: Grid (Domain Tile) -> [Tile]
 toTiles g = (\dt -> avgImg (view image <$> dt)) <$> concat g
 
 avgImg :: [Image RPU RGB Double] -> Tile
-avgImg [] = error "dumfuk"
+avgImg [] = error "dumfuk, wave function collapsed"
 avgImg [i] = Tile i
 avgImg (i:is) = defaultTile -- (i + avgImg is)/2
 
@@ -66,11 +68,14 @@ combineTiles tl = add tl canvas 0
 
 
 cst :: [Constraint Tile]
-cst = [c12]
+cst = [c13, c12]
 
-c12 :: (Int, Int) -> (Int, Int) -> Tile -> Tile -> Bool -- takes two indexes and gives func to compare
+c12, c13 :: (Int, Int) -> (Int, Int) -> Tile -> Tile -> Bool -- takes two indexes and gives func to compare
 c12 (0,0) (0,1) = (==)
 c12 _ _ = const $ const False
+
+c13 (0,0) (1,0) = (==)
+c13 _ _ = const $ const False
 
 grd :: Grid (Domain Tile)
 grd = replicate 3 (replicate 3 tilelist) -- domains start all possibilities
@@ -85,28 +90,21 @@ minDex g = (ai `div` f, ai `mod` f)
 pop :: Domain Tile -> Domain Tile -- make random
 pop = (:[]) . last
 
+succs :: (Int, Int) -> Grid a -> [(Int, Int)] -- get succs of a list
+succs (r,c) g = [(nr, nc) | nr <- [r-1, r, r+1], between 0 nr (length . head $ g),
+                            nc <- [c-1, c, c+1], between 0 nc (length . head $ g), 
+                           (nr == r) /= (nc == c)] --xor bitch
 
 wfc :: Grid (Domain Tile) -> [Constraint Tile] -> Grid (Domain Tile)
-wfc inp cs = collapse (over (element r . element c) pop inp) cs [(r,c)]
-    where (r,c) = minDex inp
+wfc inp cs = collapse (over (idx n) pop inp) cs n (succs n inp)
+    where n@(r,c) = minDex inp
 
-collapse :: Grid (Domain Tile) -> [Constraint Tile] -> [(Int, Int)] -> Grid (Domain Tile)
-collapse inp _ [] = inp
-collapse inp cs (og@(r,c):q) = over (element tr . element tc) prune inp -- replace with list of succs
-    where hb = head cs
-          tar@(tr, tc) = (r, c+1)
-          prune :: Domain Tile -> Domain Tile -- remove all values in target that violate constraint forall values of neighbor
-          prune [] = []
-          prune (d:ds) = if all (hb og tar d) (inp !!! og) then prune ds else d : prune ds
+collapse :: Grid (Domain Tile) -> [Constraint Tile] -> (Int, Int) -> [(Int, Int)] -> Grid (Domain Tile)
+collapse inp _ _ []       = inp
+collapse inp cs n scs = foldr (liftM2 over idx prune) inp scs -- fold over the array and prune forall successors
+    where
+          prune :: (Int, Int) -> Domain Tile -> Domain Tile -- remove all values in target that violate constraint forall values of neighbor
+          prune s d = foldr (\csr -> filter (\e -> none (csr n s e) (inp !!! n))) d cs
 
-
-
-
-
-
-
-
-
-
-
-
+idx :: (Int, Int) -> ASetter (Grid (Domain Tile)) (Grid (Domain Tile)) (Domain Tile) (Domain Tile)
+idx s = element (fst s) . element (snd s)
