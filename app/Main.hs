@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, DeriveTraversable #-}
+{-# LANGUAGE TemplateHaskell, DeriveTraversable, ScopedTypeVariables #-}
 module Main where
 import Prelude as P
 import Control.Lens as C
@@ -7,6 +7,8 @@ import Data.Maybe (fromMaybe)
 import Data.List (findIndex)
 import Debug.Trace (trace)
 import Control.Monad (liftM2)
+import System.Random
+
 
 newtype Tile = Tile {_image :: Image RPU RGB Double}
     deriving Eq
@@ -37,21 +39,22 @@ upRightTile = tileGen 90 (\(x, y) -> if between (90`div`3) x (2*90`div`3) || bet
 upLeftTile  = tileGen 90 (\(x, y) -> if between (90`div`3) x (2*90`div`3) || between (90`div`3) y (2*90`div`3) then PixelRGB 255 255 255 else PixelRGB 0 0 0)
 
 tilelist :: [Tile]
-tilelist = [horizTile ,vertTile]
+tilelist = [horizTile ,vertTile, crossTile]
 
-res :: Grid (Domain Tile) -> [Constraint Tile] ->  Grid (Domain Tile)
-res inp cs | all (all ((== 1) . length)) inp = inp 
-           | otherwise = res (wfc inp cs) cs
+
 main :: IO ()
 main = do 
-    let wfcres = combineTiles $ toTiles (res grd cst)
+    g <- getStdGen
+    let res = wfc g grd cst 
+    let wfcres = combineTiles $ toTiles res
+    print $ length <$> concat res
     write ("res",  wfcres)
 
 toTiles :: Grid (Domain Tile) -> [Tile]
 toTiles g = (\dt -> avgImg (view image <$> dt)) <$> concat g
 
 avgImg :: [Image RPU RGB Double] -> Tile
-avgImg [] = error "dumfuk, wave function collapsed"
+avgImg [] = trace "dumfuk, wave function collapsed" defaultTile
 avgImg [i] = Tile i
 avgImg (i:is) = defaultTile -- (i + avgImg is)/2
 
@@ -68,7 +71,7 @@ combineTiles tl = add tl canvas 0
 
 
 cst :: [Constraint Tile]
-cst = [ noAdj]
+cst = [noAdj]
 
 c12, c13, noAdj :: (Int, Int) -> (Int, Int) -> Tile -> Tile -> Bool -- takes two indexes and gives func to compare
 c12 (0,0) (0,1) = (==)
@@ -80,7 +83,7 @@ c13 _ _ = const $ const False
 noAdj _ _ = (==) -- universal constraint??
 
 grd :: Grid (Domain Tile)
-grd = replicate 20 (replicate 20 tilelist) -- domains start all possibilities
+grd = replicate 10 (replicate 10 tilelist) -- domains start all possibilities
 
 minDex :: Grid (Domain Tile) -> (Int, Int) -- (row,col)
 minDex g = (ai `div` f, ai `mod` f) 
@@ -90,19 +93,21 @@ minDex g = (ai `div` f, ai `mod` f)
           f = (length . head) g
 
 non1min :: [Int] -> Int
-non1min = foldr (\i acc -> if i == 1 then acc else min i acc) 9999
+non1min = foldr (\i acc -> if i <= 1 then acc else min i acc) 9999
 
-pop :: Domain Tile -> Domain Tile -- make random
-pop = (:[]) . last
+pop :: (RandomGen g) => g -> Domain Tile -> (Domain Tile, g) 
+pop g d = let (i, ng) = randomR (0, length d -1) g in ([d!!i], ng)
 
 succs :: (Int, Int) -> Grid a -> [(Int, Int)] -- get succs of a list
 succs (r,c) g = [(nr, nc) | nr <- [r-1, r, r+1], between 0 nr (length . head $ g),
                             nc <- [c-1, c, c+1], between 0 nc (length . head $ g), 
                            (nr == r) /= (nc == c)] --xor bitch
 
-wfc :: Grid (Domain Tile) -> [Constraint Tile] -> Grid (Domain Tile)
-wfc inp cs = collapse (over (idx n) pop inp) cs n (succs n inp)
-    where n = minDex inp
+wfc :: RandomGen g => g -> Grid (Domain Tile) -> [Constraint Tile] -> Grid (Domain Tile)
+wfc g inp cs | all (all ((<= 1) . length)) inp = inp
+             | otherwise                       = wfc ng (collapse (over (idx n) (const nd) inp) cs n (succs n inp)) cs
+    where (nd, ng) = pop g (inp !!! n) 
+          n = minDex inp
 
 collapse :: Grid (Domain Tile) -> [Constraint Tile] -> (Int, Int) -> [(Int, Int)] -> Grid (Domain Tile)
 collapse inp _ _ []       = inp
