@@ -37,14 +37,14 @@ upRightTile = tileGen 90 (\(x, y) -> if between (90`div`3) x (2*90`div`3) || bet
 upLeftTile  = tileGen 90 (\(x, y) -> if between (90`div`3) x (2*90`div`3) || between (90`div`3) y (2*90`div`3) then PixelRGB 255 255 255 else PixelRGB 0 0 0)
 
 tilelist :: [Tile]
-tilelist = [horizTile ,vertTile, crossTile]
+tilelist = [horizTile ,vertTile]
 
+res :: Grid (Domain Tile) -> [Constraint Tile] ->  Grid (Domain Tile)
+res inp cs | all (all ((== 1) . length)) inp = inp 
+           | otherwise = res (wfc inp cs) cs
 main :: IO ()
 main = do 
-    let res = wfc grd cst
-    let wfcres = combineTiles $ toTiles res
-    print $ length <$> concat res
-    print $ minDex res
+    let wfcres = combineTiles $ toTiles (res grd cst)
     write ("res",  wfcres)
 
 toTiles :: Grid (Domain Tile) -> [Tile]
@@ -77,10 +77,10 @@ c12 _ _ = const $ const False
 c13 (0,0) (1,0) = (==)
 c13 _ _ = const $ const False
 
-noAdj _ _ = (/=) -- universal constraint??
+noAdj _ _ = (==) -- universal constraint??
 
 grd :: Grid (Domain Tile)
-grd = replicate 3 (replicate 3 tilelist) -- domains start all possibilities
+grd = replicate 20 (replicate 20 tilelist) -- domains start all possibilities
 
 minDex :: Grid (Domain Tile) -> (Int, Int) -- (row,col)
 minDex g = (ai `div` f, ai `mod` f) 
