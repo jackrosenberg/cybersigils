@@ -68,14 +68,16 @@ combineTiles tl = add tl canvas 0
 
 
 cst :: [Constraint Tile]
-cst = [c13, c12]
+cst = [ noAdj]
 
-c12, c13 :: (Int, Int) -> (Int, Int) -> Tile -> Tile -> Bool -- takes two indexes and gives func to compare
+c12, c13, noAdj :: (Int, Int) -> (Int, Int) -> Tile -> Tile -> Bool -- takes two indexes and gives func to compare
 c12 (0,0) (0,1) = (==)
 c12 _ _ = const $ const False
 
 c13 (0,0) (1,0) = (==)
 c13 _ _ = const $ const False
+
+noAdj _ _ = (/=) -- universal constraint??
 
 grd :: Grid (Domain Tile)
 grd = replicate 3 (replicate 3 tilelist) -- domains start all possibilities
@@ -83,9 +85,12 @@ grd = replicate 3 (replicate 3 tilelist) -- domains start all possibilities
 minDex :: Grid (Domain Tile) -> (Int, Int) -- (row,col)
 minDex g = (ai `div` f, ai `mod` f) 
     where ai = fromMaybe (-1) (findIndex (\l -> length l == minlen) cg)
-          minlen = P.minimum (length <$> cg)
+          minlen = non1min (length <$> cg)
           cg = concat g
           f = (length . head) g
+
+non1min :: [Int] -> Int
+non1min = foldr (\i acc -> if i == 1 then acc else min i acc) 9999
 
 pop :: Domain Tile -> Domain Tile -- make random
 pop = (:[]) . last
@@ -97,7 +102,7 @@ succs (r,c) g = [(nr, nc) | nr <- [r-1, r, r+1], between 0 nr (length . head $ g
 
 wfc :: Grid (Domain Tile) -> [Constraint Tile] -> Grid (Domain Tile)
 wfc inp cs = collapse (over (idx n) pop inp) cs n (succs n inp)
-    where n@(r,c) = minDex inp
+    where n = minDex inp
 
 collapse :: Grid (Domain Tile) -> [Constraint Tile] -> (Int, Int) -> [(Int, Int)] -> Grid (Domain Tile)
 collapse inp _ _ []       = inp
