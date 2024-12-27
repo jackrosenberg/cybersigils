@@ -9,6 +9,12 @@ import Debug.Trace (trace)
 import Control.Monad (liftM2)
 import System.Random
 
+{-
+optimizations: use ids instead of imgs for the collapse, when done map each id to img  
+ 
+ 
+ 
+-}
 
 newtype Tile = Tile {_image :: Image RPU RGB Double}
     deriving Eq
@@ -45,7 +51,7 @@ tilelist = [horizTile ,vertTile, crossTile]
 main :: IO ()
 main = do 
     g <- getStdGen
-    let res = wfc g grd cst 
+    let res = wfc g (genGrd 20) cst 
     let wfcres = combineTiles $ toTiles res
     print $ length <$> concat res
     write ("res",  wfcres)
@@ -61,6 +67,7 @@ avgImg (i:is) = defaultTile -- (i + avgImg is)/2
 write :: (String, Tile) -> IO () 
 write (name, tile) = writeImage ("images/" ++ name ++ ".png") (view image tile)
 
+
 combineTiles :: [Tile] -> Tile
 combineTiles tl = add tl canvas 0
     where canvas = tileGen (cols((view image . head) tl) * width) (\(_,_) -> PixelRGB 0 0 0) 
@@ -73,17 +80,15 @@ combineTiles tl = add tl canvas 0
 cst :: [Constraint Tile]
 cst = [noAdj]
 
-c12, c13, noAdj :: (Int, Int) -> (Int, Int) -> Tile -> Tile -> Bool -- takes two indexes and gives func to compare
+c12, noAdj :: (Int, Int) -> (Int, Int) -> Tile -> Tile -> Bool -- takes two indexes and gives func to compare
+
 c12 (0,0) (0,1) = (==)
 c12 _ _ = const $ const False
 
-c13 (0,0) (1,0) = (==)
-c13 _ _ = const $ const False
-
 noAdj _ _ = (==) -- universal constraint??
 
-grd :: Grid (Domain Tile)
-grd = replicate 10 (replicate 10 tilelist) -- domains start all possibilities
+genGrd :: Int -> Grid (Domain Tile)
+genGrd sz = replicate sz (replicate sz tilelist) -- domains start all possibilities
 
 minDex :: Grid (Domain Tile) -> (Int, Int) -- (row,col)
 minDex g = (ai `div` f, ai `mod` f) 
@@ -110,10 +115,8 @@ wfc g inp cs | all (all ((<= 1) . length)) inp = inp
           n = minDex inp
 
 collapse :: Grid (Domain Tile) -> [Constraint Tile] -> (Int, Int) -> [(Int, Int)] -> Grid (Domain Tile)
-collapse inp _ _ []       = inp
-collapse inp cs n scs = foldr (liftM2 over idx prune) inp scs -- fold over the array and prune forall successors
-    where
-          prune :: (Int, Int) -> Domain Tile -> Domain Tile -- remove all values in target that violate constraint forall values of neighbor
+collapse inp cs n = foldr (liftM2 over idx prune) inp -- fold over the array and prune forall successors
+    where prune :: (Int, Int) -> Domain Tile -> Domain Tile -- remove vals in target that violate constraint forall values 
           prune s d = foldr (\csr -> filter (\e -> none (csr n s e) (inp !!! n))) d cs
 
 idx :: (Int, Int) -> ASetter (Grid (Domain Tile)) (Grid (Domain Tile)) (Domain Tile) (Domain Tile)
