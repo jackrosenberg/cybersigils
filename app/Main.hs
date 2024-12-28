@@ -122,7 +122,7 @@ wfc g cs inp = let (g, f) = collapse cs (over (idx n) (const nd) inp, [n]) in tr
 
 collapse :: [Constraint Tile] -> (Grid (Domain Tile), [(Int, Int)]) -> (Grid (Domain Tile), [(Int, Int)])
 collapse _  (inp, [])  = (inp, [])
-collapse cs (inp,n:fr) = (gr, fr++fr')
+collapse cs (inp,n:fr) = collapse cs (gr, fr++fr')
     where 
           (gr, fr') = foldr (\s (g,f) -> let (b, nd) = prune s (g!!!n) in trace ("s:  " ++ show s ++ "changed:  " ++ show b ++ "fr: " ++ show f ) (over (idx s) (const nd) g, if b then nub $ succs inp s ++ f else f)) (inp, fr) (succs inp n) -- fold over the array and prune forall successors
 
