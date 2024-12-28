@@ -34,8 +34,9 @@ tileGen sz = Tile . makeImageR RPU (sz, sz)
 between :: (Ord a) => a -> a -> a -> Bool
 between l x u = x >= l && x <= u 
 
-defaultTile, horizTile, vertTile, crossTile :: Tile -- make the tiles
-defaultTile = tileGen 90 (const (PixelRGB 1 0 0))
+defaultTile, collapseTile, horizTile, vertTile, crossTile :: Tile -- make the tiles
+defaultTile = tileGen 90 (const (PixelRGB 0 0 0))
+collapseTile = tileGen 90 (const (PixelRGB 1 0 0))
 horizTile = tileGen 90 (\(x, _) -> if between (90`div`3) x (2*90`div`3) then PixelRGB 255 255 255 else PixelRGB 0 0 0)
 vertTile  = tileGen 90 (\(_, y) -> if between (90`div`3) y (2*90`div`3) then PixelRGB 255 255 255 else PixelRGB 0 0 0)
 crossTile = tileGen 90 (\(x, y) -> if between (90`div`3) x (2*90`div`3) || between (90`div`3) y (2*90`div`3) then PixelRGB 255 255 255 else PixelRGB 0 0 0)
@@ -60,7 +61,7 @@ toTiles :: Grid (Domain Tile) -> [Tile]
 toTiles g = (\dt -> avgImg (view image <$> dt)) <$> concat g
 
 avgImg :: [Image RPU RGB Double] -> Tile
-avgImg [] = trace "dumfuk, wave function collapsed" defaultTile
+avgImg [] = trace "dumfuk, wave function collapsed" collapseTile
 avgImg [i] = Tile i
 avgImg (i:is) = defaultTile -- (i + avgImg is)/2
 
@@ -106,17 +107,21 @@ pop g d = let (i, ng) = randomR (0, length d -1) g in ([d!!i], ng)
 
 succs :: Grid a -> (Int, Int) -> [(Int, Int)] -- get succs of a list
 succs g (r,c)  = [(nr, nc) | nr <- [r-1, r, r+1], between 0 nr (length . head $ g),
-                            nc <- [c-1, c, c+1], between 0 nc (length . head $ g), 
-                           (nr == r) /= (nc == c)] --xor bitch
+                             nc <- [c-1, c, c+1], between 0 nc (length . head $ g), 
+                            (nr == r) /= (nc == c)] --xor bitch
 
 wfc :: RandomGen g => g -> [Constraint Tile] -> Grid (Domain Tile) -> Grid (Domain Tile)
-wfc g cs inp = let (g, f) = collapse (over (idx n) (const nd) inp) cs n in trace ("front: " ++ show f) g
+wfc g cs inp = let (g, f) = collapse cs (over (idx n) (const nd) inp, [n]) in g
     where (nd, ng) = pop g (inp !!! n) 
           n = minDex inp
 
-collapse :: Grid (Domain Tile) -> [Constraint Tile] -> (Int, Int) -> (Grid (Domain Tile), [(Int, Int)])
-collapse inp cs n = foldr (\s (g,f) -> (over (idx s) (snd . prune s) g, if fst $ prune s (inp !!!n) then nub $ succs g s ++ f else f)) (inp, []) (succs inp n) -- fold over the array and prune forall successors
-    where prune :: (Int, Int) -> Domain Tile -> (Bool, Domain Tile) -- remove vals in target that violate constraint forall values and if they changed
+collapse :: [Constraint Tile] -> (Grid (Domain Tile), [(Int, Int)]) -> (Grid (Domain Tile), [(Int, Int)])
+collapse cs (inp, []) = (inp, [])
+collapse cs (inp,n:fr) = if null fr' then (gr, []) else trace ("n: " ++ show n ++ " fr: " ++ show fr) collapse cs (gr, fr++fr')
+    where 
+          (gr, fr') = foldr (\s (g,f) -> (over (idx s) (snd . prune s) g, if fst $ prune s (inp !!!n) then nub $ succs g s ++ f else f)) (inp, []) (succs inp n) -- fold over the array and prune forall successors
+
+          prune :: (Int, Int) -> Domain Tile -> (Bool, Domain Tile) -- remove vals in target that violate constraint forall values and if they changed
           prune s d = let res = foldr (\csr -> filter (\e -> none (csr n s e) (inp !!! n))) d cs in (res == d, res)
 
 idx :: (Int, Int) -> ASetter (Grid (Domain Tile)) (Grid (Domain Tile)) (Domain Tile) (Domain Tile)
