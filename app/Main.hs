@@ -54,7 +54,7 @@ tilemap = [(horizTile, "h") ,(vertTile, "v"), (crossTile, "c")]
 main :: IO ()
 main = do 
     g <- getStdGen
-    let res = wfc g cst (genGrd 10) 
+    let res = wfc g cst (genGrd 3) 
     let wfcres = combineTiles $ toTiles res
     putStr $ prettyPoss res
     write ("res",  wfcres)
@@ -72,7 +72,10 @@ write (name, tile) = writeImage ("images/" ++ name ++ ".png") (view image tile)
 
 
 prettyPoss :: Grid (Domain Tile) -> String -- fromMaybe "x" . (`lookup` tilemap))
-prettyPoss = foldr (\r acc -> show (concat . P.traverse (fromMaybe "x" . (`lookup` tilemap) ) <$> r) ++ "\r\n"  ++ acc) "" 
+prettyPoss = foldr (\r acc -> show (tileToString <$> r) ++ "\r\n"  ++ acc) "" 
+
+tileToString :: Domain Tile -> String
+tileToString = concat . P.traverse (fromMaybe "x" . (`lookup` tilemap) )
 
 combineTiles :: [Tile] -> Tile
 combineTiles tl = Tile $ foldr (\(im, (r,c)) acc -> superimpose (r*rows im, c*cols im) im acc) canvas imsWidx
@@ -111,30 +114,27 @@ pop :: (RandomGen g) => g -> Domain Tile -> (Domain Tile, g)
 pop g d = let (i, ng) = randomR (0, length d -1) g in ([d!!i], ng)
 
 succs :: Grid a -> (Int, Int) -> [(Int, Int)] -- get succs of a list
-succs g (r,c)  = [(nr, nc) | nr <- [r-1, r, r+1], between 0 nr (length . head $ g),
-                             nc <- [c-1, c, c+1], between 0 nc (length . head $ g), 
+succs g (r,c)  = [(nr, nc) | nr <- [r-1, r, r+1], between 0 nr ((length . head $ g) -1),
+                             nc <- [c-1, c, c+1], between 0 nc ((length . head $ g) -1), 
                             (nr == r) /= (nc == c)] --xor bitch
 
 wfc :: RandomGen g => g -> [Constraint Tile] -> Grid (Domain Tile) -> Grid (Domain Tile)
-wfc g cs inp = let (g, f) = collapse cs (over (idx n) (const nd) inp, [n]) in trace ("f: " ++ show f) g
+wfc g cs inp = let (g, f) = collapse cs (over (idx n) (const nd) inp, succs inp n) in g
     where (nd, ng) = pop g (inp !!! n) 
           n = minDex inp
 
 collapse :: [Constraint Tile] -> (Grid (Domain Tile), [(Int, Int)]) -> (Grid (Domain Tile), [(Int, Int)])
 collapse _  (inp, [])  = (inp, [])
-collapse cs (inp,n:fr) = collapse cs (gr, fr++fr')
+collapse cs (inp,n:fr) = collapse cs (nGrid, nub $ fr ++ nFr)
     where 
-          (gr, fr') = foldr (\s (g,f) -> let (b, nd) = prune s (g!!!n) in trace ("s:  " ++ show s ++ "changed:  " ++ show b ++ "fr: " ++ show f ) (over (idx s) (const nd) g, if b then nub $ succs inp s ++ f else f)) (inp, fr) (succs inp n) -- fold over the array and prune forall successors
+          (nGrid, nFr) = foldr (\suc (gr,cf) -> let (shorter, nd) = prune gr suc (gr!!!n) in (over (idx n) (const nd) gr, if shorter then cf ++ succs inp n else cf)) (inp, []) (succs inp n) -- fold over the array and prune forall successors
 
-          prune :: (Int, Int) -> Domain Tile -> (Bool, Domain Tile) -- remove vals in target that violate constraint forall values and if they changed
-          prune s d = let res = foldr (\csr -> filter (\e -> none (csr n s e) (inp !!! n))) d cs in (res == d, res)
+          prune :: Grid (Domain Tile) -> (Int, Int) -> Domain Tile -> (Bool, Domain Tile) -- remove all vals from d that s doesnt allow
+          prune cg s d = let res = foldr (\csr acc -> filter (\v -> (not . all (csr n s v)) (cg !!! s)) acc) d cs in (length d > length res , res)
 
 idx :: (Int, Int) -> ASetter (Grid (Domain Tile)) (Grid (Domain Tile)) (Domain Tile) (Domain Tile)
 idx s = element (fst s) . element (snd s)
 
 
-again :: Int -> (a->a) -> a -> a
-again 1 f a = f a 
-again n f a = f $ again (n-1) f a
 
 
