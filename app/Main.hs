@@ -54,7 +54,7 @@ tilemap = [(horizTile, "h") ,(vertTile, "v"), (crossTile, "c")]
 main :: IO ()
 main = do 
     g <- getStdGen
-    let res = wfc g cst (genGrd 3) 
+    let res = wfc g cst (genGrd 10) 
     let wfcres = combineTiles $ toTiles res
     putStr $ prettyPoss res
     write ("res",  wfcres)
@@ -95,7 +95,7 @@ c12 _ _ = const $ const False
 
 cross (r1,c1) (r2,c2) t1 t2 = r1 == r2 && c1 == c2+1 && t1 == crossTile && t2 /= horizTile
 
-noAdj _ _ = (/=) -- universal constraint??
+noAdj _ _ = (==) -- universal constraint??
 
 genGrd :: Int -> Grid (Domain Tile)
 genGrd sz = replicate sz (replicate sz tilelist) -- domains start all possibilities
@@ -117,11 +117,15 @@ succs :: Grid a -> (Int, Int) -> [(Int, Int)] -- get succs of a list
 succs g (r,c)  = [(nr, nc) | nr <- [r-1, r, r+1], between 0 nr ((length . head $ g) -1),
                              nc <- [c-1, c, c+1], between 0 nc ((length . head $ g) -1), 
                             (nr == r) /= (nc == c)] --xor bitch
-
 wfc :: RandomGen g => g -> [Constraint Tile] -> Grid (Domain Tile) -> Grid (Domain Tile)
-wfc g cs inp = let (g, f) = collapse cs (over (idx n) (const nd) inp, succs inp n) in g
-    where (nd, ng) = pop g (inp !!! n) 
+wfc rg cs inp | done inp = inp 
+             | otherwise = wfc ng cs g
+    where (g, _) = collapse cs (over (idx n) (const nd) inp, succs inp n) 
+          (nd, ng) = pop rg (inp !!! n) 
           n = minDex inp
+
+done :: Grid (Domain Tile) -> Bool
+done  = all (all((<=1) . length)) 
 
 collapse :: [Constraint Tile] -> (Grid (Domain Tile), [(Int, Int)]) -> (Grid (Domain Tile), [(Int, Int)])
 collapse _  (inp, [])  = (inp, [])
