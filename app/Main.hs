@@ -4,7 +4,7 @@ import Prelude as P
 import Control.Lens as C
 import Graphics.Image as I
 import Data.Maybe (fromMaybe)
-import Data.List (findIndex, nub)
+import Data.List (findIndex, nub, findIndices)
 import Debug.Trace (trace)
 import Control.Monad (liftM2)
 import System.Random
@@ -86,7 +86,7 @@ combineTiles tl = Tile $ foldr (\(im, (r,c)) acc -> superimpose (r*rows im, c*co
           incBy (fm, fn) = (rows di * fm, cols di * fn)
 
 cst :: [Constraint Tile]
-cst = [noAdj, cross]
+cst = [noAdj]
 
 c12, noAdj, cross :: Constraint Tile
 
@@ -100,9 +100,9 @@ noAdj _ _ = (==) -- universal constraint??
 genGrd :: Int -> Grid (Domain Tile)
 genGrd sz = replicate sz (replicate sz tilelist) -- domains start all possibilities
 
-minDex :: Grid (Domain Tile) -> (Int, Int) -- (row,col)
-minDex g = (ai `div` f, ai `mod` f) 
-    where ai = fromMaybe (-1) (findIndex (\l -> length l == minlen) cg)
+minDeces :: Grid (Domain Tile) -> [(Int, Int)] -- (row,col)
+minDeces g = (\ai -> (ai `div` f, ai `mod` f)) <$> ids
+    where ids = findIndices (\l -> length l == minlen) cg
           minlen = non1min (length <$> cg)
           cg = concat g
           f = (length . head) g
@@ -123,8 +123,9 @@ idx s = element (fst s) . element (snd s)
 wfc :: RandomGen g => g -> [Constraint Tile] -> Grid (Domain Tile) -> Grid (Domain Tile)
 wfc rg cs inp | done inp  = inp 
               | otherwise = wfc ng cs (fst $ collapse cs (over (idx n) (const nd) inp, succs inp n))
-    where (nd, ng) = pop rg (inp !!! n) 
-          n = minDex inp
+    where (nd, nng) = pop ng (inp !!! n) 
+          idcs = minDeces inp
+          (n, ng) = let (ni, ng) = randomR (0, length idcs -1) rg in (idcs !! ni, ng)
 
 done :: Grid (Domain Tile) -> Bool
 done  = all $ all $ (<=1) . length
