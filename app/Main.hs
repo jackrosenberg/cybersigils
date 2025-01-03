@@ -9,6 +9,14 @@ import Control.Monad (liftM2)
 import System.Random
 import Graphics.Gloss
 import GHC.Float (int2Float)
+import qualified Data.Set as S
+import Graphics.Gloss.Interface.IO.Game (Key (SpecialKey), Event (EventKey), KeyState (Down, Up), SpecialKey (KeySpace))
+
+data World = World
+    { _keys :: S.Set Key
+    , _grid :: Grid (Domain Tile)
+    }
+
 
 {-
 optimizations: use ids instead of imgs for the collapse, when done map each id to img  
@@ -29,6 +37,7 @@ g !!! l = g !! fst l !! snd l
 type Domain a = [a] -- list of tiles that are possibilities
 
 $(makeLenses ''Tile)
+$(makeLenses ''World)
 
 between :: (Ord a) => a -> a -> a -> Bool
 between l x u = x >= l && x <= u 
@@ -43,21 +52,42 @@ collapseTile = Tile { _image = color red $ rectangleSolid 90 90   }
 defaultTile  = Tile { _image = color black $ rectangleSolid 90 90 }
 
 
+handleInput :: Event -> World -> World
+handleInput (EventKey k Down _ _) env = env { _keys = S.insert k (_keys env)}
+handleInput (EventKey k Up _ _)   env = env { _keys = S.delete k (_keys env)}
+handleInput _ env = env -- Ignore non-keypresses for simplicity
+
+update :: RandomGen g => g -> Float -> World -> World
+update g _ world
+    | S.member (SpecialKey KeySpace) (_keys world) = world {_grid = let gr = _grid world in wfco g cst gr}
+    | otherwise = world 
+
 tilelist :: [Tile]
 tilelist = [horizTile ,vertTile, crossTile]
+
+------------------------------------------------------
+sz = 10
+window = InWindow "" (90*sz, 90*sz) (0, 0)
+background = light black
+cst = [noAdj]   :: [Constraint Tile]
+grd = genGrd sz :: Grid (Domain Tile)
+------------------------------------------------------
+
+render :: World -> Picture
+render w = translate (-(45*int2Float (sz-1))) (-(45*int2Float (sz-1))) $ pictures b
+    where 
+     res = w^.grid  
+     l = zip [(r, c) | r <- [0..(sz -1)], c <- [0..(sz -1)]] (concat res)
+     b = (\((r, c), d) -> translate (int2Float r*90) (int2Float c*90) (toTl d^. image)) <$> l 
+
 
 main :: IO ()
 main = do 
     g <- getStdGen
-    let sz = 10
-    let window = InWindow "" (90*sz, 90*sz) (0, 0)
-    let background = light black
-    let cst = [noAdj]   :: [Constraint Tile]
-    let grd = genGrd sz :: Grid (Domain Tile)
-    let res = wfc g cst grd 
-    let l = zip [(r, c) | r <- [0..(sz -1)], c <- [0..(sz -1)]] (concat res)
-    let b = (\((r, c), d) -> translate (int2Float r*90) (int2Float c*90) (toTl d^. image)) <$> l 
-    display window background $ translate (-(45*int2Float (sz-1))) (-(45*int2Float (sz-1))) $ pictures b
+    play window background 30 (World {_keys = S.empty , _grid = grd} ) render handleInput (update g)
+    
+    
+    
 
 toTl :: Domain Tile -> Tile
 toTl [] = trace "dumfuk, wave function collapsed" collapseTile
@@ -96,6 +126,12 @@ idx s = element (fst s) . element (snd s)
 
 done :: Grid (Domain Tile) -> Bool
 done  = all $ all $ (<=1) . length
+
+wfco :: RandomGen g => g -> [Constraint Tile] -> Grid (Domain Tile) -> Grid (Domain Tile)
+wfco rg cs inp = fst $ collapse cs (over (idx n) (const nd) inp, succs inp n)
+    where (nd, nng) = pop ng (inp !!! n) 
+          idcs = minDeces inp
+          (n, ng) = let (ni, ng) = randomR (0, length idcs -1) rg in (idcs !! ni, ng)
 
 wfc :: RandomGen g => g -> [Constraint Tile] -> Grid (Domain Tile) -> Grid (Domain Tile)
 wfc rg cs inp | done inp  = inp 
