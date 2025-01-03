@@ -13,8 +13,7 @@ extra-doc-files:    CHANGELOG.md
 -- extra-source-files:
 
 common warnings
-    ghc-options: -Wall, -threaded
-
+    ghc-options:  
 executable cybersigils
     import:           warnings
     main-is:          Main.hs
@@ -23,7 +22,8 @@ executable cybersigils
     build-depends:    base ^>=4.17.2.1,
                       hip,
                       random,
-                      lens
+                      lens,
+                      gloss
 
     hs-source-dirs:   app
     default-language: Haskell2010

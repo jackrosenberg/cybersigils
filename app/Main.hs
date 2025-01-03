@@ -8,6 +8,16 @@ import Data.List (findIndex, nub, findIndices)
 import Debug.Trace (trace)
 import Control.Monad (liftM2)
 import System.Random
+import Graphics.Gloss
+
+window :: Display
+window = InWindow "Nice Window" (400, 400) (10, 10)
+
+background :: Color
+background = white
+
+drawing :: Picture
+drawing = circle 80
 
 {-
 optimizations: use ids instead of imgs for the collapse, when done map each id to img  
@@ -55,10 +65,13 @@ tilemap = [(horizTile, "h") ,(vertTile, "v"), (crossTile, "c")]
 main :: IO ()
 main = do 
     g <- getStdGen
-    let res = wfc g cst (genGrd 10) 
+    let cst = [noAdj]   :: [Constraint Tile]
+    let grd = genGrd 10 :: Grid (Domain Tile)
+    let res = wfc g cst grd 
     let wfcres = combineTiles $ toTiles res
     -- putStr $ prettyPoss res
     write ("res",  wfcres)
+    display window background drawing
 
 toTiles :: Grid (Domain Tile) -> [Tile]
 toTiles g = (\dt -> avgImg (view image <$> dt)) <$> concat g
@@ -85,13 +98,7 @@ combineTiles tl = Tile $ foldr (\(im, (r,c)) acc -> superimpose (r*rows im, c*co
           di =  defaultTile^.image
           incBy (fm, fn) = (rows di * fm, cols di * fn)
 
-cst :: [Constraint Tile]
-cst = [noAdj]
-
-c12, noAdj, cross :: Constraint Tile
-
-c12 (0,0) (0,1) = (==)
-c12 _ _ = const $ const False
+noAdj, cross :: Constraint Tile
 
 cross (r1,c1) (r2,c2) t1 t2 = r1 == r2 && c1 == c2+1 && t1 == crossTile && t2 /= horizTile
 
@@ -120,15 +127,16 @@ succs g (r,c)  = [(nr, nc) | nr <- [r-1, r, r+1], between 0 nr ((length . head $
 
 idx :: (Int, Int) -> ASetter (Grid (Domain Tile)) (Grid (Domain Tile)) (Domain Tile) (Domain Tile)
 idx s = element (fst s) . element (snd s)
+
+done :: Grid (Domain Tile) -> Bool
+done  = all $ all $ (<=1) . length
+
 wfc :: RandomGen g => g -> [Constraint Tile] -> Grid (Domain Tile) -> Grid (Domain Tile)
 wfc rg cs inp | done inp  = inp 
               | otherwise = wfc ng cs (fst $ collapse cs (over (idx n) (const nd) inp, succs inp n))
     where (nd, nng) = pop ng (inp !!! n) 
           idcs = minDeces inp
           (n, ng) = let (ni, ng) = randomR (0, length idcs -1) rg in (idcs !! ni, ng)
-
-done :: Grid (Domain Tile) -> Bool
-done  = all $ all $ (<=1) . length
 
 collapse :: [Constraint Tile] -> (Grid (Domain Tile), [(Int, Int)]) -> (Grid (Domain Tile), [(Int, Int)])
 collapse _  (inp, [])  = (inp, [])
@@ -138,6 +146,3 @@ collapse cs (inp,n:fr) = collapse cs (nGrid, nub $ fr ++ nFr)
 
           prune :: Grid (Domain Tile) -> (Int, Int) -> Domain Tile -> (Bool, Domain Tile) -- remove all vals from d that s doesnt allow
           prune cg s d = let res = foldr (\csr acc -> filter (\v -> (not . all (csr n s v)) (cg !!! s)) acc) d cs in (length d > length res, res)
-
-
-
