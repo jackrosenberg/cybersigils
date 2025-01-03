@@ -2,22 +2,13 @@
 module Main where
 import Prelude as P
 import Control.Lens as C
-import Graphics.Image as I
 import Data.Maybe (fromMaybe)
 import Data.List (findIndex, nub, findIndices)
 import Debug.Trace (trace)
 import Control.Monad (liftM2)
 import System.Random
 import Graphics.Gloss
-
-window :: Display
-window = InWindow "Nice Window" (400, 400) (10, 10)
-
-background :: Color
-background = white
-
-drawing :: Picture
-drawing = circle 80
+import GHC.Float (int2Float)
 
 {-
 optimizations: use ids instead of imgs for the collapse, when done map each id to img  
@@ -26,7 +17,7 @@ optimizations: use ids instead of imgs for the collapse, when done map each id t
  
 -}
 
-newtype Tile = Tile {_image :: Image RPU RGB Double}
+newtype Tile = Tile {_image :: Picture}
     deriving Eq
 type Constraint a = (Int, Int) -> (Int, Int) -> Tile -> Tile -> Bool -- takes two indexes and gives func to compare
  -- takes two indexes and gives func to compare
@@ -39,64 +30,39 @@ type Domain a = [a] -- list of tiles that are possibilities
 
 $(makeLenses ''Tile)
 
-tileGen :: Int -> ((Int, Int) -> Pixel RGB Double) -> Tile 
-tileGen sz = Tile . makeImageR RPU (sz, sz) 
-
 between :: (Ord a) => a -> a -> a -> Bool
 between l x u = x >= l && x <= u 
 
-defaultTile, collapseTile, horizTile, vertTile, crossTile :: Tile -- make the tiles
-defaultTile = tileGen 90 (const (PixelRGB 0 0 0))
-collapseTile = tileGen 90 (const (PixelRGB 1 0 0))
-horizTile = tileGen 90 (\(x, _) -> if between (90`div`3) x (2*90`div`3) then PixelRGB 255 255 255 else PixelRGB 0 0 0)
-vertTile  = tileGen 90 (\(_, y) -> if between (90`div`3) y (2*90`div`3) then PixelRGB 255 255 255 else PixelRGB 0 0 0)
-crossTile = tileGen 90 (\(x, y) -> if between (90`div`3) x (2*90`div`3) || between (90`div`3) y (2*90`div`3) then PixelRGB 255 255 255 else PixelRGB 0 0 0)
-                                                 
-upRightTile, upLeftTile:: Tile 
-upRightTile = tileGen 90 (\(x, y) -> if between (90`div`3) x (2*90`div`3) || between (90`div`3) y (2*90`div`3) then PixelRGB 255 255 255 else PixelRGB 0 0 0)
-upLeftTile  = tileGen 90 (\(x, y) -> if between (90`div`3) x (2*90`div`3) || between (90`div`3) y (2*90`div`3) then PixelRGB 255 255 255 else PixelRGB 0 0 0)
+
+horizTile ,vertTile, crossTile, collapseTile, defaultTile :: Tile
+horizTile = Tile { _image = pictures [color black $ rectangleSolid 90 90, color white $ rectangleSolid 90 30] }
+vertTile  = Tile { _image = pictures [color black $ rectangleSolid 90 90, color white $ rectangleSolid 30 90] }
+crossTile = Tile { _image = pictures [color black $ rectangleSolid 90 90, color white $ rectangleSolid 30 90, color white $ rectangleSolid 90 30]}
+
+collapseTile = Tile { _image = color red $ rectangleSolid 90 90   }
+defaultTile  = Tile { _image = color black $ rectangleSolid 90 90 }
+
 
 tilelist :: [Tile]
 tilelist = [horizTile ,vertTile, crossTile]
 
-tilemap :: [(Tile, String)]
-tilemap = [(horizTile, "h") ,(vertTile, "v"), (crossTile, "c")]
-
 main :: IO ()
 main = do 
     g <- getStdGen
+    let sz = 10
+    let window = InWindow "" (90*sz, 90*sz) (0, 0)
+    let background = light black
     let cst = [noAdj]   :: [Constraint Tile]
-    let grd = genGrd 10 :: Grid (Domain Tile)
+    let grd = genGrd sz :: Grid (Domain Tile)
     let res = wfc g cst grd 
-    let wfcres = combineTiles $ toTiles res
-    -- putStr $ prettyPoss res
-    write ("res",  wfcres)
-    display window background drawing
+    let l = zip [(r, c) | r <- [0..(sz -1)], c <- [0..(sz -1)]] (concat res)
+    let b = (\((r, c), d) -> translate (int2Float r*90) (int2Float c*90) (toTl d^. image)) <$> l 
+    display window background $ translate (-(45*int2Float (sz-1))) (-(45*int2Float (sz-1))) $ pictures b
 
-toTiles :: Grid (Domain Tile) -> [Tile]
-toTiles g = (\dt -> avgImg (view image <$> dt)) <$> concat g
-
-avgImg :: [Image RPU RGB Double] -> Tile
-avgImg [] = trace "dumfuk, wave function collapsed" collapseTile
-avgImg [i] = Tile i
-avgImg (i:is) = defaultTile -- (i + avgImg is)/2
-
-write :: (String, Tile) -> IO () 
-write (name, tile) = writeImage ("images/" ++ name ++ ".png") (view image tile)
-
-prettyPoss :: Grid (Domain Tile) -> String -- fromMaybe "x" . (`lookup` tilemap))
-prettyPoss = foldr (\r acc -> show (tileToString <$> r) ++ "\r\n"  ++ acc) "" 
-
-tileToString :: Domain Tile -> String
-tileToString = concat . P.traverse (fromMaybe "x" . (`lookup` tilemap))
-
-combineTiles :: [Tile] -> Tile
-combineTiles tl = Tile $ foldr (\(im, (r,c)) acc -> superimpose (r*rows im, c*cols im) im acc) canvas imsWidx
-    where imsWidx = P.zip (_image <$> tl) [(r, c) | r <- [0..(width -1)], c <- [0..(width -1)]] 
-          width  = (ceiling . sqrt . fromIntegral . length) tl
-          canvas = canvasSize Wrap (incBy (width, width)) di
-          di =  defaultTile^.image
-          incBy (fm, fn) = (rows di * fm, cols di * fn)
+toTl :: Domain Tile -> Tile
+toTl [] = trace "dumfuk, wave function collapsed" collapseTile
+toTl [i] = i
+toTl (i:is) = defaultTile -- (i + avgImg is)/2
 
 noAdj, cross :: Constraint Tile
 
