@@ -6,7 +6,7 @@ import Data.Maybe (fromMaybe)
 import Data.List (findIndex, nub, findIndices)
 import Debug.Trace (trace)
 import Control.Monad (liftM2)
-import System.Random
+import System.Random 
 import Graphics.Gloss
 import GHC.Float (int2Float)
 import qualified Data.Set as S
@@ -17,13 +17,6 @@ data World = World
     , _grid :: Grid (Domain Tile)
     }
 
-
-{-
-optimizations: use ids instead of imgs for the collapse, when done map each id to img  
- 
- 
- 
--}
 
 newtype Tile = Tile {_image :: Picture}
     deriving Eq
@@ -61,20 +54,10 @@ update :: RandomGen g => g -> Float -> World -> World
 update g _ world
     | S.member (SpecialKey KeySpace) (_keys world) = over grid (const res) world
     | otherwise = world
-    where (ng,g) = split g
-          gr = world^.grid
-          (res, _) = wfco g cst gr 
+    where (res, _) = wfco g cst (world^.grid)
 
 tilelist :: [Tile]
 tilelist = [horizTile ,vertTile, crossTile]
-
-------------------------------------------------------
-sz = 9
-window = InWindow "" (90*sz, 90*sz) (0, 0)
-background = light black
-cst = [noAdj]   :: [Constraint Tile]
-grd = genGrd sz :: Grid (Domain Tile)
-------------------------------------------------------
 
 render :: World -> Picture
 render w = translate (-(45*int2Float (sz-1))) (-(45*int2Float (sz-1))) $ pictures b
@@ -84,19 +67,25 @@ render w = translate (-(45*int2Float (sz-1))) (-(45*int2Float (sz-1))) $ picture
      fr = minDeces res
      b = (\((r, c), d) -> let col = if (r,c) `elem` fr then green else light orange in translate (int2Float r*90) (int2Float c*90) (toTl d col ^. image)) <$> l 
 
+------------------------------------------------------
+sz = 9
+window = InWindow "" (90*sz, 90*sz) (0, 0)
+background = light black
+cst = [noAdj]   :: [Constraint Tile]
+grd = genGrd sz :: Grid (Domain Tile)
+------------------------------------------------------
+
 
 main :: IO ()
-main = do 
+main = do
     g <- getStdGen
-    
-    play window background 30 (World {_keys = S.empty , _grid = grd} ) render handleInput (update g)
-    
+    play window background 30 (World {_keys = S.empty , _grid = grd}) render handleInput (update g)
     
 
 toTl :: Domain Tile -> Color -> Tile
 toTl [] _= trace "dumfuk, wave function collapsed" collapseTile
 toTl [i] _ = i
-toTl l@(i:is) c = Tile {_image = ( scale 0.5 0.5 . translate (-45) (-45) . color c . text . show . length) l}
+toTl l@(i:is) c = Tile {_image = (scale 0.5 0.5 . translate (-45) (-45) . color c . text . show . length) l}
 noAdj, cross :: Constraint Tile
 
 cross (r1,c1) (r2,c2) t1 t2 =  r1 == r2 && (t1 /= crossTile) && (t2 /= horizTile)
@@ -117,8 +106,9 @@ non1min :: [Int] -> Int
 non1min = foldr (\i acc -> if i <= 1 then acc else min i acc) 9999
 
 pop :: (RandomGen g) => g -> Domain Tile -> (Domain Tile, g) 
-pop g d = let (i, ng) = uniformR (0, length d-1) g in trace ("i: " ++ show i ++ " dl: " ++(show . length) d) ([d!!i], ng)
-
+pop g d = trace ("i: " <> show i <> " ld: " <> show (length d-1)) ([d!!i], ng)
+        where (i, ng) = randomR (0, length d-1) g
+ 
 succs :: Grid a -> (Int, Int) -> [(Int, Int)] -- get succs of a list
 succs g (r,c)  = [(nr, nc) | nr <- [r-1, r, r+1], between 0 nr ((length . head $ g) -1),
                              nc <- [c-1, c, c+1], between 0 nc ((length . head $ g) -1), 
@@ -130,19 +120,14 @@ idx s = element (fst s) . element (snd s)
 done :: Grid (Domain Tile) -> Bool
 done  = all $ all $ (<=1) . length
 
+-- Wfc once:
+-- top level function, pops a random tile with the least entropy and calls collapse on it
 wfco :: RandomGen g => g -> [Constraint Tile] -> Grid (Domain Tile) -> (Grid (Domain Tile), g)
-wfco rg cs inp | done inp  = (inp, rg)
-               | otherwise = let r =fst $ collapse cs (over (idx n) (const nd) inp, succs inp n) in (r, nng)
-    where (nd, nng) = pop ng (inp !!! n) 
+wfco g cs inp | done inp  = (inp, g)
+              | otherwise = let r = fst $ collapse cs (over (idx n) (const nd) inp, succs inp n) in (r, nnng)
+    where (nd, nnng) = pop ng (inp !!! n) 
           idcs = minDeces inp
-          (n, ng) = let (ni, ng) = uniformR (0, length idcs -1) rg in (idcs !! ni, ng)
-
-wfc :: RandomGen g => g -> [Constraint Tile] -> Grid (Domain Tile) -> Grid (Domain Tile)
-wfc rg cs inp | done inp  = inp 
-              | otherwise = wfc nng cs (fst $ collapse cs (over (idx n) (const nd) inp, succs inp n))
-    where (nd, nng) = pop ng (inp !!! n) 
-          idcs = minDeces inp
-          (n, ng) = let (ni, ng) = uniformR (0, length idcs-1) rg in (idcs !! ni, ng)
+          (n, ng) = let (ni, ng) = randomR (0, length idcs -1) g in (idcs !! ni, ng)
 
 collapse :: [Constraint Tile] -> (Grid (Domain Tile), [(Int, Int)]) -> (Grid (Domain Tile), [(Int, Int)])
 collapse _  (inp, [])  = (inp, [])
