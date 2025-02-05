@@ -54,7 +54,8 @@ update :: RandomGen g => g -> Float -> World -> World
 update g _ world
     | S.member (SpecialKey KeySpace) (_keys world) = over grid (const res) world
     | otherwise = world
-    where (res, _) = wfco g cst (world^.grid)
+    where (res, _) = wfco ng cst (world^.grid)
+          (ng, _) = split g
 
 tilelist :: [Tile]
 tilelist = [horizTile ,vertTile, crossTile]
